@@ -1,0 +1,196 @@
+// package main
+
+// import (
+// 	"database/sql"
+// 	"fmt"
+// 	"image"
+// 	"image/color"
+// 	"image/draw"
+// 	"image/jpeg"
+// 	"log"
+// 	"os"
+// 	"path/filepath"
+// 	"regexp"
+// 	"strconv"
+
+// 	"github.com/chai2010/webp"
+// 	"github.com/disintegration/imaging"
+// 	_ "modernc.org/sqlite" // SQLite драйвер
+
+// 	"golang.org/x/image/font"
+// 	"golang.org/x/image/font/gofont/goregular"
+// 	"golang.org/x/image/font/opentype"
+// 	"golang.org/x/image/math/fixed"
+// )
+
+// const (
+// 	imagesFolder      = "images"
+// 	outputFolder      = "images_900_1200"
+// 	dbFile            = "products.db"
+// 	transportMaxLimit = 0.000999 // Максимальный объем для обработки
+// )
+
+// var fileRegex = regexp.MustCompile(`^(\d+)\.webp$`)
+
+// func main() {
+// 	// Открываем соединение с базой данных
+// 	db, err := sql.Open("sqlite", dbFile)
+// 	if err != nil {
+// 		log.Fatalf("Ошибка открытия базы данных: %v", err)
+// 	}
+// 	defer db.Close()
+
+// 	// Создаём выходную папку, если её нет
+// 	if err := os.MkdirAll(outputFolder, os.ModePerm); err != nil {
+// 		log.Fatalf("Ошибка создания папки %s: %v", outputFolder, err)
+// 	}
+
+// 	// Получаем список файлов
+// 	files, err := os.ReadDir(imagesFolder)
+// 	if err != nil {
+// 		log.Fatalf("Ошибка чтения папки %s: %v", imagesFolder, err)
+// 	}
+
+// 	for _, file := range files {
+// 		matches := fileRegex.FindStringSubmatch(file.Name())
+// 		if matches == nil {
+// 			continue
+// 		}
+
+// 		productID := matches[1] // Номер товара из имени файла
+// 		imagePath := filepath.Join(imagesFolder, file.Name())
+
+// 		// Получаем данные из базы
+// 		name, transportVolume := getProductData(db, productID)
+// 		if name == "" {
+// 			log.Printf("Пропущен файл %s: товар не найден в базе\n", file.Name())
+// 			continue
+// 		}
+
+// 		// Проверяем transport_volume_m3
+// 		volume, err := strconv.ParseFloat(transportVolume, 64)
+// 		if err != nil || volume > transportMaxLimit {
+// 			log.Printf("Пропущен файл %s: транспортный объем %.6f превышает лимит\n", file.Name(), volume)
+// 			continue
+// 		}
+
+// 		// Извлекаем габариты из name
+// 		dimensions := extractDimensions(name)
+// 		if dimensions == "" {
+// 			log.Printf("Пропущен файл %s: не удалось определить габариты\n", file.Name())
+// 			continue
+// 		}
+
+// 		// Создаём три варианта изображений
+// 		quantities := []string{"10", "30", "50"}
+// 		for _, qty := range quantities {
+// 			outputFile := filepath.Join(outputFolder, fmt.Sprintf("%s-%s.jpg", productID, qty))
+// 			text := fmt.Sprintf("%s — %s шт.", dimensions, qty)
+// 			incImage(imagePath, outputFile, text)
+// 		}
+// 	}
+// }
+
+// // Получение name и transport_volume_m3 из базы данных
+// func getProductData(db *sql.DB, productID string) (string, string) {
+// 	var name, transportVolume string
+// 	err := db.QueryRow("SELECT name, transport_volume_m3 FROM products WHERE product_id = ?", productID).Scan(&name, &transportVolume)
+// 	if err != nil {
+// 		if err == sql.ErrNoRows {
+// 			return "", ""
+// 		}
+// 		log.Printf("Ошибка запроса к базе данных: %v", err)
+// 		return "", ""
+// 	}
+// 	return name, transportVolume
+// }
+
+// // Извлекаем габариты из строки name (например, "Коробка, 318*258*73 мм")
+// func extractDimensions(name string) string {
+// 	re := regexp.MustCompile(`(\d+\*\d+\*\d+ мм)`)
+// 	match := re.FindStringSubmatch(name)
+// 	if match != nil {
+// 		return match[1]
+// 	}
+// 	return ""
+// }
+
+// // Обрабатываем изображение и добавляем текст
+// func incImage(inputFilepath, outputFilePath, text string) {
+// 	inputFile, err := os.Open(inputFilepath)
+// 	if err != nil {
+// 		log.Printf("Ошибка открытия файла %s: %v", inputFilepath, err)
+// 		return
+// 	}
+// 	defer inputFile.Close()
+
+// 	srcImage, err := webp.Decode(inputFile)
+// 	if err != nil {
+// 		log.Printf("Ошибка декодирования WEBP %s: %v", inputFilepath, err)
+// 		return
+// 	}
+
+// 	srcBounds := srcImage.Bounds()
+// 	newSrcWidth := int(float64(srcBounds.Dx()) * 1.7)
+// 	newSrcHeight := int(float64(srcBounds.Dy()) * 1.7)
+// 	resizedImage := imaging.Resize(srcImage, newSrcWidth, newSrcHeight, imaging.Lanczos)
+
+// 	newWidth, newHeight := 900, 1200
+// 	newImage := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+// 	white := color.RGBA{255, 255, 255, 255}
+// 	draw.Draw(newImage, newImage.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
+
+// 	offsetX := (newWidth - newSrcWidth) / 2
+// 	offsetY := (newHeight - newSrcHeight) / 2
+// 	draw.Draw(newImage, image.Rect(offsetX, offsetY, offsetX+newSrcWidth, offsetY+newSrcHeight), resizedImage, image.Point{}, draw.Over)
+
+// 	addLabel(newImage, 50, newHeight-100, text)
+
+// 	outputFile, err := os.Create(outputFilePath)
+// 	if err != nil {
+// 		log.Printf("Ошибка создания файла %s: %v", outputFilePath, err)
+// 		return
+// 	}
+// 	defer outputFile.Close()
+
+// 	err = jpeg.Encode(outputFile, newImage, &jpeg.Options{Quality: 90})
+// 	if err != nil {
+// 		log.Printf("Ошибка сохранения JPEG %s: %v", outputFilePath, err)
+// 		return
+// 	}
+
+// 	log.Printf("Сохранено: %s", outputFilePath)
+// }
+
+// // Добавляем текст на изображение
+// func addLabel(img *image.RGBA, x, y int, label string) {
+// 	col := color.Black
+// 	ttfFont, err := opentype.Parse(goregular.TTF)
+// 	if err != nil {
+// 		log.Printf("Ошибка загрузки шрифта: %v", err)
+// 		return
+// 	}
+
+// 	face, err := opentype.NewFace(ttfFont, &opentype.FaceOptions{
+// 		Size:    70,
+// 		DPI:     72,
+// 		Hinting: font.HintingFull,
+// 	})
+// 	if err != nil {
+// 		log.Printf("Ошибка создания шрифтового лица: %v", err)
+// 		return
+// 	}
+
+// 	point := fixed.Point26_6{
+// 		X: fixed.I(x),
+// 		Y: fixed.I(y),
+// 	}
+
+// 	d := &font.Drawer{
+// 		Dst:  img,
+// 		Src:  image.NewUniform(col),
+// 		Face: face,
+// 		Dot:  point,
+// 	}
+// 	d.DrawString(label)
+// }
