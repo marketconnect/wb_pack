@@ -11,6 +11,8 @@ require (
 	golang.org/x/image v0.23.0
 )
 
+require github.com/marketconnect/cargo_avto_update v0.0.0-20250201130747-c0f0db04fee0 // indirect
+
 require (
 	github.com/chromedp/cdproto v0.0.0-20250120090109-d38428e4d9c8 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
@@ -21,6 +23,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/marketconnect/logger v0.0.0-20241217191331-9abbb47ae0f6
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

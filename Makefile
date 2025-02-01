@@ -1,4 +1,4 @@
-BINARY_NAME=api_bridge
+BINARY_NAME=fbs_orders
 
 run:
 	go run app/cmd/main.go
@@ -10,7 +10,7 @@ git:
 
 build:
 	rm -f ${BINARY_NAME}
-	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ${BINARY_NAME} app/cmd/main.go
+	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ${BINARY_NAME} cmd/main.go
 	echo "Built ${BINARY_NAME}"
 
 test:

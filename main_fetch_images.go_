@@ -28,7 +28,7 @@
 // 	"golang.org/x/image/math/fixed"
 // )
 
-// const pageURL = "https://sp.cargo-avto.ru/catalog/boxes/"
+// const pageURL = "https://sp.cargo-avto.ru/catalog/paketi/paketi-zip-lock/"
 
 // var imageURLRegex = regexp.MustCompile(`url\(["']?(.*?)["']?\)`)
 
@@ -36,10 +36,11 @@
 
 // func main() {
 // 	// fetchImages()
-// 	input := "./images/222015.webp"
-// 	output := "output.jpg"
-// 	text := "10 шт"
-// 	incImage(input, output, text)
+// 	// input := "./images/222015.webp"
+// 	// output := "output.jpg"
+// 	// text := "10 шт"
+// 	// incImage(input, output, text)
+
 // 	fmt.Println("Обработка завершена.")
 // }
 
@@ -147,16 +148,16 @@
 // 	return urls
 // }
 
-// // Функция для скачивания изображений
 // func downloadImages(urls []string) {
 // 	var wg sync.WaitGroup
-// 	numberOnlyRegex := regexp.MustCompile(`^\d+\.\w+$`)
+
+// 	validRegex := regexp.MustCompile(`^(?:\d+|[0-9a-f]{32})\.\w+$`)
 
 // 	for _, url := range urls {
 // 		fileName := filepath.Base(url)
 
-// 		if !numberOnlyRegex.MatchString(fileName) {
-// 			fmt.Println("Пропущено (не только цифры):", fileName)
+// 		if !validRegex.MatchString(fileName) {
+// 			fmt.Println("Пропущено:", fileName)
 // 			continue
 // 		}
 
@@ -206,51 +207,6 @@
 // 		fmt.Println("Ошибка записи файла:", err)
 // 	}
 // }
-
-// // Функция увеличения изображения
-// // func incImage(inputFilepath string, outputFilePath string) {
-// // 	inputFile, err := os.Open(inputFilepath)
-// // 	if err != nil {
-// // 		log.Fatalf("Не удалось открыть файл: %v", err)
-// // 	}
-// // 	defer inputFile.Close()
-
-// // 	srcImage, err := webp.Decode(inputFile)
-// // 	if err != nil {
-// // 		log.Fatalf("Не удалось декодировать WEBP: %v", err)
-// // 	}
-
-// // 	srcBounds := srcImage.Bounds()
-// // 	newSrcWidth := int(float64(srcBounds.Dx()) * 1.5)
-// // 	newSrcHeight := int(float64(srcBounds.Dy()) * 1.5)
-
-// // 	resizedImage := imaging.Resize(srcImage, newSrcWidth, newSrcHeight, imaging.Lanczos)
-
-// // 	newWidth := 900
-// // 	newHeight := 1200
-
-// // 	newImage := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
-// // 	white := color.RGBA{255, 255, 255, 255}
-// // 	draw.Draw(newImage, newImage.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
-
-// // 	offsetX := (newWidth - newSrcWidth) / 2
-// // 	offsetY := (newHeight - newSrcHeight) / 2
-
-// // 	draw.Draw(newImage, image.Rect(offsetX, offsetY, offsetX+newSrcWidth, offsetY+newSrcHeight), resizedImage, image.Point{}, draw.Over)
-
-// // 	outputFile, err := os.Create(outputFilePath)
-// // 	if err != nil {
-// // 		log.Fatalf("Не удалось создать файл для записи: %v", err)
-// // 	}
-// // 	defer outputFile.Close()
-
-// // 	err = jpeg.Encode(outputFile, newImage, &jpeg.Options{Quality: 90})
-// // 	if err != nil {
-// // 		log.Fatalf("Не удалось сохранить изображение: %v", err)
-// // 	}
-
-// // 	log.Println("Изображение увеличено и сохранено как", outputFilePath)
-// // }
 
 // func incImage(inputFilepath string, outputFilePath string, text string) {
 // 	// Открываем файл
