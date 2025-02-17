@@ -1,0 +1,202 @@
+package main
+
+import (
+	"database/sql"
+	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+	"log"
+	"os"
+	"path/filepath"
+	"regexp"
+
+	"github.com/chai2010/webp"
+	"github.com/disintegration/imaging"
+	_ "modernc.org/sqlite" // SQLite драйвер
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
+)
+
+const (
+	imagesFolder      = "images"
+	outputFolder      = "atllen_images"
+	dbFile            = "lenta_atlasnaya.db"
+	transportMaxLimit = 0.999
+)
+
+var fileRegex = regexp.MustCompile(`^(\d+)\.webp$`)
+
+func main() {
+	// Открываем соединение с базой данных
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		log.Fatalf("Ошибка открытия базы данных: %v", err)
+	}
+	defer db.Close()
+
+	// Создаём выходную папку, если её нет
+	if err := os.MkdirAll(outputFolder, os.ModePerm); err != nil {
+		log.Fatalf("Ошибка создания папки %s: %v", outputFolder, err)
+	}
+
+	// Получаем список файлов
+	files, err := os.ReadDir(imagesFolder)
+	if err != nil {
+		log.Fatalf("Ошибка чтения папки %s: %v", imagesFolder, err)
+	}
+
+	for _, file := range files {
+		matches := fileRegex.FindStringSubmatch(file.Name())
+		if matches == nil {
+			continue
+		}
+
+		productID := matches[1] // Номер товара из имени файла
+		imagePath := filepath.Join(imagesFolder, file.Name())
+
+		// Получаем данные из базы: name, transport_volume_m3, length_mm и width_mm
+		name, lengthMM, widthMM := getProductData(db, productID)
+		if name == "" {
+			log.Printf("Пропущен файл %s: товар не найден в базе\n", file.Name())
+			continue
+		}
+
+		// Проверяем transport_volume_m3
+		// volume, err := strconv.ParseFloat(transportVolume, 64)
+		// if err != nil || volume > transportMaxLimit {
+		// 	log.Printf("Пропущен файл %s: транспортный объем %.6f превышает лимит\n", file.Name(), volume)
+		// 	// continue
+		// }
+
+		// Формируем габариты из length_mm и width_mm (например, "318x258 мм")
+		dimensions := extractDimensions(lengthMM, widthMM)
+		if dimensions == "" {
+			log.Printf("Пропущен файл %s: не удалось определить габариты\n", file.Name())
+			continue
+		}
+
+		// Создаём три варианта изображений
+		quantities := []string{"50"}
+		for _, qty := range quantities {
+			outputFile := filepath.Join(outputFolder, fmt.Sprintf("%s-%s.jpg", productID, qty))
+			text := fmt.Sprintf("%s", dimensions)
+			incImage(imagePath, outputFile, text)
+		}
+	}
+}
+
+// getProductData получает name, transport_volume_m3, length_mm и width_mm для заданного productID
+func getProductData(db *sql.DB, productID string) (string, string, string) {
+	var name, lengthMM, widthMM string
+	err := db.QueryRow("SELECT name, length_mm, width_mm FROM products WHERE product_id = ?", productID).
+		Scan(&name, &lengthMM, &widthMM)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", "", ""
+		}
+		log.Printf("Ошибка запроса к базе данных: %v", err)
+		return "", "", ""
+	}
+
+	// Преобразуем значения lengthMM и widthMM из строки в число, делим на 10 и форматируем обратно в строку
+
+	return name, lengthMM, widthMM
+}
+
+// extractDimensions формирует строку габаритов в формате "length_mm x width_mm мм"
+func extractDimensions(lengthMM, widthMM string) string {
+	if lengthMM == "" || widthMM == "" {
+		return ""
+	}
+	// transfor string to float
+
+	// widthMMFloat, _ := strconv.ParseFloat(widthMM, 64)
+
+	return fmt.Sprintf("%sмм х 23 метра", widthMM)
+}
+
+// incImage обрабатывает изображение и добавляет на него текст
+func incImage(inputFilepath, outputFilePath, text string) {
+	inputFile, err := os.Open(inputFilepath)
+	if err != nil {
+		log.Printf("Ошибка открытия файла %s: %v", inputFilepath, err)
+		return
+	}
+	defer inputFile.Close()
+
+	srcImage, err := webp.Decode(inputFile)
+	if err != nil {
+		log.Printf("Ошибка декодирования WEBP %s: %v", inputFilepath, err)
+		return
+	}
+
+	srcBounds := srcImage.Bounds()
+	newSrcWidth := int(float64(srcBounds.Dx()) * 1.7)
+	newSrcHeight := int(float64(srcBounds.Dy()) * 1.7)
+	resizedImage := imaging.Resize(srcImage, newSrcWidth, newSrcHeight, imaging.Lanczos)
+
+	newWidth, newHeight := 900, 1200
+	newImage := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+	white := color.RGBA{255, 255, 255, 255}
+	draw.Draw(newImage, newImage.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
+
+	offsetX := (newWidth - newSrcWidth) / 2
+	offsetY := (newHeight - newSrcHeight) / 2
+	draw.Draw(newImage, image.Rect(offsetX, offsetY, offsetX+newSrcWidth, offsetY+newSrcHeight), resizedImage, image.Point{}, draw.Over)
+
+	addLabel(newImage, 180, newHeight-100, text)
+	// addLabel(newImage, 120, 100, qty)
+
+	outputFile, err := os.Create(outputFilePath)
+	if err != nil {
+		log.Printf("Ошибка создания файла %s: %v", outputFilePath, err)
+		return
+	}
+	defer outputFile.Close()
+
+	err = jpeg.Encode(outputFile, newImage, &jpeg.Options{Quality: 90})
+	if err != nil {
+		log.Printf("Ошибка сохранения JPEG %s: %v", outputFilePath, err)
+		return
+	}
+
+	log.Printf("Сохранено: %s", outputFilePath)
+}
+
+// addLabel добавляет текст на изображение
+func addLabel(img *image.RGBA, x, y int, label string) {
+	col := color.Black
+	ttfFont, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		log.Printf("Ошибка загрузки шрифта: %v", err)
+		return
+	}
+
+	face, err := opentype.NewFace(ttfFont, &opentype.FaceOptions{
+		Size:    70,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		log.Printf("Ошибка создания шрифтового лица: %v", err)
+		return
+	}
+
+	point := fixed.Point26_6{
+		X: fixed.I(x),
+		Y: fixed.I(y),
+	}
+
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(col),
+		Face: face,
+		Dot:  point,
+	}
+	d.DrawString(label)
+}

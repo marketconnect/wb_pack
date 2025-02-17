@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 
 const imagesFolder = "images"
 
-const dbFile = "zip_lock_products_1000.db"
+const dbFile = "prod_info.db"
 
 const baseURL = "https://sp.cargo-avto.ru/catalog/"
 
@@ -35,6 +36,7 @@ func main() {
 	createTable(db)
 
 	productIDs, err := getProductIDs(imagesFolder)
+	// productIDs, err := getProductIDsFROMWBFOLDER____________________BAD("/home/i-b8o/Documents/WB/images/boxes/")
 	if err != nil {
 		log.Fatalf("Ошибка при получении номеров из файлов: %v", err)
 	}
@@ -71,36 +73,59 @@ func main() {
 }
 
 func createTable(db *sql.DB) {
-	// zip lock
+	// Удаляем таблицу, если она уже существует
+	_, err := db.Exec("DROP TABLE IF EXISTS products")
+	if err != nil {
+		log.Fatalf("Ошибка при удалении таблицы: %v", err)
+	}
+
 	query := `
-	CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, product_id TEXT UNIQUE, name TEXT, price TEXT, description TEXT, material TEXT DEFAULT '', length_mm TEXT DEFAULT '', width_mm TEXT DEFAULT '', height_mkm TEXT DEFAULT '', color TEXT DEFAULT '', special TEXT DEFAULT '', quantity_str TEXT DEFAULT '', weight_g TEXT DEFAULT '', transport_volume_m3 TEXT DEFAULT '', manufacturer_country TEXT DEFAULT '');`
-	// boxes
-	// query := `
-	// CREATE TABLE IF NOT EXISTS products (
-	// 	id INTEGER PRIMARY KEY,
-	// 	product_id TEXT UNIQUE,
-	// 	name TEXT,
-	// 	price TEXT,
-	// 	description TEXT,
-	// 	material TEXT DEFAULT '',
-	// 	length_mm TEXT DEFAULT '',
-	// 	width_mm TEXT DEFAULT '',
-	// 	height_mm TEXT DEFAULT '',
-	// 	volume_l TEXT DEFAULT '',
-	// 	cardboard_brand TEXT DEFAULT '',
-	// 	cardboard_type TEXT DEFAULT '',
-	// 	color TEXT DEFAULT '',
-	// 	has_handles TEXT DEFAULT '',
-	// 	box_shape TEXT DEFAULT '',
-	// 	weight_g TEXT DEFAULT '',
-	// 	transport_volume_m3 TEXT DEFAULT '',
-	// 	trade_mark TEXT DEFAULT '',
-	// 	manufacturer_country TEXT DEFAULT ''
-	// );`
-	_, err := db.Exec(query)
+    CREATE TABLE products (
+        id INTEGER PRIMARY KEY,
+        product_id TEXT UNIQUE,
+        name TEXT,
+        price TEXT,
+        description TEXT,
+        material TEXT DEFAULT '',
+        length_mm TEXT DEFAULT '',
+        width_mm TEXT DEFAULT '',
+        thickness_mkm TEXT DEFAULT '',
+        volume_l TEXT DEFAULT '',
+        cardboard_brand TEXT DEFAULT '',
+        cardboard_type TEXT DEFAULT '',
+        color TEXT DEFAULT '',
+        has_handles TEXT DEFAULT '',
+        box_shape TEXT DEFAULT '',
+        weight_g TEXT DEFAULT '',
+        transport_volume_m3 TEXT DEFAULT '',
+        trade_mark TEXT DEFAULT '',
+        manufacturer_country TEXT DEFAULT ''
+    );`
+	_, err = db.Exec(query)
 	if err != nil {
 		log.Fatalf("Ошибка при создании таблицы: %v", err)
 	}
+}
+func getProductIDsFROMWBFOLDER____________________BAD(folder string) ([]string, error) {
+	var productIDs []string
+
+	files, err := os.ReadDir(folder)
+	if err != nil {
+		return nil, err
+	}
+	// read  all folders inside
+	for _, file := range files {
+		// check if folder name is a number
+		if file.IsDir() && isNumber(file.Name()) {
+			productIDs = append(productIDs, file.Name())
+		}
+	}
+	return productIDs, nil
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 func getProductIDs(folder string) ([]string, error) {
@@ -123,27 +148,34 @@ func getProductIDs(folder string) ([]string, error) {
 
 func scrapeProductData(ctx context.Context, url string) (map[string]string, error) {
 	var productName, productPrice, characteristicsHTML, descriptionHTML string
-
-	if url == "https://sp.cargo-avto.ru/catalog/9604019/" {
+	num := strings.Split(url, "/")[4]
+	if num == "9605302" || num == "9605303" || num == "9605304" || num == "9605305" || num == "9605306" || num == "9605307" || num == "9605308" || num == "9605309" {
 		err := chromedp.Run(ctx,
 			chromedp.Navigate(url),
-			chromedp.Sleep(3*time.Second), // Увеличиваем время ожидания
+			chromedp.Sleep(3*time.Second), // увеличиваем время ожидания
 			chromedp.Text(`h1`, &productName, chromedp.ByQuery),
 			chromedp.Text(`li[data-min="1"] .price-val`, &productPrice, chromedp.ByQuery),
 			chromedp.OuterHTML(`div.characteristics__content`, &characteristicsHTML, chromedp.ByQuery),
-			// chromedp.WaitVisible(`div.description-text`, chromedp.ByQuery),
-			// chromedp.OuterHTML(`div.description-text`, &descriptionHTML, chromedp.ByQuery),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка парсинга страницы %s: %w", url, err)
 		}
 
-		// Выводим отладочную информацию
 		log.Printf("Описание HTML (до очистки): %s", descriptionHTML)
 
 		productName = strings.TrimSpace(productName)
 		productPrice = strings.TrimSpace(productPrice)
 		characteristics := cleanHTML(characteristicsHTML)
+		// description := cleanHTML(descriptionHTML)
+
+		// if description == "" {
+		// 	err = chromedp.Run(ctx, chromedp.Text(`div.description-text`, &description, chromedp.ByQuery))
+		// 	if err != nil {
+		// 		log.Printf("Ошибка при получении текста описания: %v", err)
+		// 	}
+		// }
+		// cleanedDescription := cleanDescription(description)
+		// log.Printf("Описание товара: %s", cleanedDescription)
 
 		return map[string]string{
 			"name":            productName,
@@ -152,20 +184,21 @@ func scrapeProductData(ctx context.Context, url string) (map[string]string, erro
 			"description":     "",
 		}, nil
 	}
+
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
-		chromedp.Sleep(3*time.Second), // Увеличиваем время ожидания
+		chromedp.Sleep(3*time.Second), // увеличиваем время ожидания
 		chromedp.Text(`h1`, &productName, chromedp.ByQuery),
 		chromedp.Text(`li[data-min="1"] .price-val`, &productPrice, chromedp.ByQuery),
 		chromedp.OuterHTML(`div.characteristics__content`, &characteristicsHTML, chromedp.ByQuery),
-		chromedp.WaitVisible(`div.description-text`, chromedp.ByQuery),
-		chromedp.OuterHTML(`div.description-text`, &descriptionHTML, chromedp.ByQuery),
+		// теперь описание берется из нового контейнера:
+		chromedp.WaitVisible(`div.text.ct-after-description`, chromedp.ByQuery),
+		chromedp.OuterHTML(`div.text.ct-after-description`, &descriptionHTML, chromedp.ByQuery),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка парсинга страницы %s: %w", url, err)
 	}
 
-	// Выводим отладочную информацию
 	log.Printf("Описание HTML (до очистки): %s", descriptionHTML)
 
 	productName = strings.TrimSpace(productName)
@@ -173,7 +206,6 @@ func scrapeProductData(ctx context.Context, url string) (map[string]string, erro
 	characteristics := cleanHTML(characteristicsHTML)
 	description := cleanHTML(descriptionHTML)
 
-	// Если description пустой, пробуем получить текст напрямую
 	if description == "" {
 		err = chromedp.Run(ctx, chromedp.Text(`div.description-text`, &description, chromedp.ByQuery))
 		if err != nil {
@@ -197,8 +229,7 @@ func cleanHTML(html string) string {
 	html = strings.ReplaceAll(html, "\t", " ")
 	html = regexp.MustCompile(`\s+`).ReplaceAllString(html, " ")
 
-	re := regexp.MustCompile(`<span class="characteristics-list__label">(.*?)<\/span>.*?<div class="characteristics-list__value">.*?>(.*?)<\/span>`)
-
+	re := regexp.MustCompile(`<span class="characteristics-list__label">(.*?)<\/span>.*?<div class="characteristics-list__value">(.*?)<\/div>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 
 	var characteristics []string
@@ -210,7 +241,6 @@ func cleanHTML(html string) string {
 		value := strings.TrimSpace(match[2])
 
 		value = regexp.MustCompile(`<.*?>`).ReplaceAllString(value, "")
-
 		characteristics = append(characteristics, fmt.Sprintf("%s: %s", name, value))
 	}
 
@@ -219,7 +249,6 @@ func cleanHTML(html string) string {
 
 func parseCharacteristics(characteristics string) map[string]string {
 	result := make(map[string]string)
-
 	pairs := strings.Split(characteristics, " ; ")
 	for _, pair := range pairs {
 		parts := strings.SplitN(pair, ": ", 2)
@@ -229,99 +258,62 @@ func parseCharacteristics(characteristics string) map[string]string {
 			result[key] = value
 		}
 	}
-
-	// boxes
-	// expectedKeys := []string{
-	// 	"Материал", "Длина, мм", "Ширина, мм", "Высота, мм", "Полезный объем, л",
-	// 	"Марка картона", "Тип картона", "Цвет", "Наличие ручек", "Форма коробки",
-	// 	"Вес, г", "Транспортировочный объем, м³", "Торговая марка", "Страна производитель",
-	// }
-
-	// zip lock
+	// Новой список ключей для данной страницы:
 	expectedKeys := []string{
-		"Материал", "Длина, мм", "Ширина, мм",
-		"Толщина, мкм", "Цвет", "Особенность",
-		"Кол-во в упаковке, шт.", "Вес, г",
-		"Транспортировочный объем, м³", "Страна производитель",
+		"Материал", "Длина, мм", "Ширина, мм", "Высота, мм", "Полезный объем, л",
+		"Тип картона", "Форма коробки", "Марка картона", "Цвет", "Наличие ручек", "Вес, г", "Транспортировочный объем, м³",
 	}
-
 	for _, key := range expectedKeys {
 		if _, exists := result[key]; !exists {
 			result[key] = ""
 		}
 	}
-
 	return result
 }
 
 func saveToDatabase(db *sql.DB, productID string, product map[string]string) {
 	parsedCharacteristics := parseCharacteristics(product["characteristics"])
-	// zip lock
+
 	query := `
 	INSERT INTO products (
-		product_id, name, price, description, material, length_mm, width_mm, height_mkm, color, special,
-		quantity_str, weight_g, transport_volume_m3, manufacturer_country
-	)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		product_id, name, price, description, material, length_mm, width_mm, thickness_mkm, volume_l,
+		cardboard_brand, cardboard_type, color, has_handles, box_shape, weight_g,
+		transport_volume_m3, trade_mark, manufacturer_country
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(product_id) DO UPDATE
-	SET
-		name = excluded.name,
-		price = excluded.price,
-		description = excluded.description,
-		material = excluded.material,
-		length_mm = excluded.length_mm,
-		width_mm = excluded.width_mm,
-		height_mkm = excluded.height_mkm,
-		color = excluded.color,
-		special = excluded.special,
-		quantity_str = excluded.quantity_str,
-		weight_g = excluded.weight_g,
-		transport_volume_m3 = excluded.transport_volume_m3,
-		manufacturer_country = excluded.manufacturer_country;
-	`
-	// boxes
-	// query := `
-	// INSERT INTO products (
-	// 	product_id, name, price, description, material, length_mm, width_mm, height_mm, volume_l,
-	// 	cardboard_brand, cardboard_type, color, has_handles, box_shape, weight_g,
-	// 	transport_volume_m3, trade_mark, manufacturer_country
-	// ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	// ON CONFLICT(product_id) DO UPDATE
-	// SET
-	// 	name = excluded.name,
-	// 	price = excluded.price,
-	// 	description = excluded.description,  -- Обновляем описание
-	// 	material = excluded.material,
-	// 	length_mm = excluded.length_mm,
-	// 	width_mm = excluded.width_mm,
-	// 	height_mm = excluded.height_mm,
-	// 	volume_l = excluded.volume_l,
-	// 	cardboard_brand = excluded.cardboard_brand,
-	// 	cardboard_type = excluded.cardboard_type,
-	// 	color = excluded.color,
-	// 	has_handles = excluded.has_handles,
-	// 	box_shape = excluded.box_shape,
-	// 	weight_g = excluded.weight_g,
-	// 	transport_volume_m3 = excluded.transport_volume_m3,
-	// 	trade_mark = excluded.trade_mark,
-	// 	manufacturer_country = excluded.manufacturer_country;`
+	SET name = excluded.name,
+	price = excluded.price, description = excluded.description,
+	material = excluded.material, length_mm = excluded.length_mm,
+	width_mm = excluded.width_mm, thickness_mkm = excluded.thickness_mkm,
+	volume_l = excluded.volume_l, cardboard_brand = excluded.cardboard_brand,
+	cardboard_type = excluded.cardboard_type, color = excluded.color,
+	has_handles = excluded.has_handles, box_shape = excluded.box_shape,
+	weight_g = excluded.weight_g, transport_volume_m3 = excluded.transport_volume_m3,
+	trade_mark = excluded.trade_mark, manufacturer_country = excluded.manufacturer_country;	`
 
 	log.Printf("Сохраняем в БД: ID=%s, Name=%s, Price=%s, Description=%s", productID, product["name"], product["price"], product["description"])
 
-	// zip lock
-	_, err := db.Exec(query, productID, product["name"], product["price"], product["description"],
-		parsedCharacteristics["Материал"], parsedCharacteristics["Длина, мм"], parsedCharacteristics["Ширина, мм"], parsedCharacteristics["Толщина, мкм"],
-		parsedCharacteristics["Цвет"], parsedCharacteristics["Особенность"], parsedCharacteristics["Кол-во в упаковке, шт."],
-		parsedCharacteristics["Вес, г"], parsedCharacteristics["Транспортировочный объем, м³"], parsedCharacteristics["Страна производитель"],
+	_, err := db.Exec(query,
+		productID,
+		product["name"],
+		product["price"],
+		product["description"],
+		parsedCharacteristics["Тип"], // material
+		parsedCharacteristics["Намотка, м"], // length_mm
+		parsedCharacteristics["Ширина, мм"], // width_mm
+		"",                              // thickness_mkm
+		"",                              // volume_l
+		"",                              // cardboard_brand
+		"",                              // cardboard_type
+		parsedCharacteristics["Цвет"],   // color
+		"",                              // has_handles
+		"",                              // box_shape
+		parsedCharacteristics["Вес, г"], // weight_g
+		parsedCharacteristics["Транспортировочный объем, м³"], // transport_volume_m3
+		"", // trade_mark
+		parsedCharacteristics["Страна производитель"], // manufacturer_country
 	)
-	// boxes
-	// _, err := db.Exec(query,
-	// 	productID, product["name"], product["price"], product["description"],
-	// 	parsedCharacteristics["Материал"], parsedCharacteristics["Длина, мм"], parsedCharacteristics["Ширина, мм"], parsedCharacteristics["Высота, мм"],
-	// 	parsedCharacteristics["Полезный объем, л"], parsedCharacteristics["Марка картона"], parsedCharacteristics["Тип картона"],
-	// 	parsedCharacteristics["Цвет"], parsedCharacteristics["Наличие ручек"], parsedCharacteristics["Форма коробки"], parsedCharacteristics["Вес, г"],
-	// 	parsedCharacteristics["Транспортировочный объем, м³"], parsedCharacteristics["Торговая марка"], parsedCharacteristics["Страна производитель"],
-	// )
+
 	if err != nil {
 		log.Printf("Ошибка при сохранении данных для %s: %v\n", productID, err)
 	} else {
@@ -336,11 +328,18 @@ var synonyms = map[string][]string{
 	"Защищает вещи":          {"Обеспечивает защиту вещей", "Сохраняет содержимое", "Предохраняет вещи"},
 	"Низкая стоимость":       {"Экономичный вариант", "Доступная цена", "Выгодное предложение"},
 	"Мы заботимся о природе": {"Мы бережем окружающую среду", "Мы уделяем внимание экологии", "Мы стремимся к экологичности"},
+
+	"Ширина, мм": {"Ширина", "Размер по ширине"},
+	"Намотка, м": {"Намотка", "Длина намотки"},
+	"Тип":        {"Вид", "Категория"},
+	"Цвет":       {"Оттенок"},
+	"Вес, г":     {"Масса, г"},
+	"Транспортировочный объем, м³": {"Объем перевозки", "Транспортный объем"},
+	"Страна производитель":         {"Страна", "Производство"},
 }
 
-// Функция замены слов на случайные синонимы
 func replaceSynonyms(text string) string {
-	rand.Seed(uint64((time.Now().UnixNano())))
+	rand.Seed(uint64(time.Now().UnixNano()))
 	for key, values := range synonyms {
 		re := regexp.MustCompile(`(?i)\b` + key + `\b`)
 		text = re.ReplaceAllString(text, values[rand.Intn(len(values))])
@@ -348,17 +347,12 @@ func replaceSynonyms(text string) string {
 	return text
 }
 
-// cleanDescription очищает текст, удаляет ненужные заголовки и улучшает стилизацию
 func cleanDescription(text string) string {
-	// Убираем "Информация" и "Обратите внимание!"
+
 	text = regexp.MustCompile(`(?i)^\s*(Информация\s*)?(Обратите внимание!\s*)?`).ReplaceAllString(text, "")
 
-	// Убираем повторяющиеся переводы строк (заменяем 2+ подряд идущих на один)
 	text = regexp.MustCompile(`\n{2,}`).ReplaceAllString(text, "\n")
 
-	// Подбираем случайные синонимы
 	text = replaceSynonyms(text)
-
-	// Убираем начальные и конечные пробелы
 	return strings.TrimSpace(text)
 }

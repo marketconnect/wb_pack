@@ -7,22 +7,42 @@ import (
 	"github.com/marketconnect/cargo_avto_update"
 )
 
-const boxesSubjectID = 3979
-const boxesDelivery = 100
-const desiredMargin = 0.3
-const taxRate = 0.07
-const pvz = 15
+// Settings
+// БОПП пакет
+// const subjectID = 3756
+// const vendorCodePattern = `^bopp_\d+_\d+$`
+
+// Атласная лента
+// const subjectID = 1881
+const vendorCodePattern = `^box_\d+_\d+$`
+
+const subjectID = 3979
 
 func main() {
 	apiKey := os.Getenv("WB_TOKEN")
-	boxesDbName := os.Getenv("BOXES_DB_NAME")
+	// boxesDbName := os.Getenv("BOXES_DB_NAME")
+	// boxesDbName := os.Getenv("BOPP")
+	boxesDbName := "output"
+
+	usePcs := true
+	// if subjectID == 3756 {
+	// 	usePcs = false
+	// 	boxesDelivery = 20
+	// }
+	// if subjectID == 1881 {
+	// 	usePcs = false
+	// 	boxesDelivery = 20
+	// }
 	cfg := cargo_avto_update.Config{
-		ObjectIDs:     []int{boxesSubjectID},
-		DesiredMargin: desiredMargin,
-		TaxRate:       taxRate,
-		Delivery:      boxesDelivery,
-		PVZ:           pvz,
-		DBName:        boxesDbName,
+		ObjectIDs: []int{subjectID},
+		// DesiredMargin: desiredMargin,
+		// TaxRate:       taxRate,
+		// Delivery:      boxesDelivery,
+		// PVZ:           pvz,
+		DBName: boxesDbName,
+		// VendorCodePattern: `^box_\d+_\d+$`,
+		VendorCodePattern: vendorCodePattern,
+		UsePcs:            usePcs,
 	}
 
 	if err := cargo_avto_update.Process(apiKey, cfg); err != nil {

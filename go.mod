@@ -11,10 +11,10 @@ require (
 	golang.org/x/image v0.23.0
 )
 
-require github.com/marketconnect/cargo_avto_update v0.0.0-20250201130747-c0f0db04fee0 // indirect
+require github.com/marketconnect/cargo_avto_update v0.0.0-20250205222320-6586aa09233d // indirect
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20250120090109-d38428e4d9c8 // indirect
+	github.com/chromedp/cdproto v0.0.0-20250126231910-1730200a0f74 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
@@ -30,7 +30,7 @@ require (
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	modernc.org/libc v1.61.10 // indirect
+	modernc.org/libc v1.61.11 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.8.2 // indirect
 	modernc.org/sqlite v1.34.5 // indirect

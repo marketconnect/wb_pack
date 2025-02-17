@@ -1,0 +1,292 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chai2010/webp"
+	"github.com/chromedp/chromedp"
+	"github.com/disintegration/imaging"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
+)
+
+const pageURL = "https://sp.cargo-avto.ru/catalog/vozdushno-puzyrkovaya-plenka/paketi/"
+
+var imageURLRegex = regexp.MustCompile(`url\(["']?(.*?)["']?\)`)
+
+const outputFolder = "images"
+
+func main() {
+	fetchImages()
+	// input := "./images/222015.webp"
+	// output := "output.jpg"
+	// text := "10 шт"
+	// incImage(input, output, text)
+
+	fmt.Println("Обработка завершена.")
+}
+
+func fetchImages() {
+	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", false), // Открываем браузер в видимом режиме
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true), // Отключаем sandbox для стабильной работы
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)"),
+	)...)
+	defer cancel()
+
+	ctx, cancel = chromedp.NewContext(ctx)
+	defer cancel()
+
+	// Пытаемся открыть страницу
+	fmt.Println("Открываем страницу:", pageURL)
+	var bodyContent string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(pageURL),
+		chromedp.Sleep(3*time.Second), // Даем время странице загрузиться
+		chromedp.OuterHTML("html", &bodyContent),
+	)
+	if err != nil {
+		fmt.Println("Ошибка загрузки страницы:", err)
+		return
+	}
+
+	if len(bodyContent) < 100 {
+		fmt.Println("Ошибка: страница не загрузилась или пустая.")
+		return
+	}
+	fmt.Println("Страница загружена.")
+
+	if err := os.MkdirAll(outputFolder, os.ModePerm); err != nil {
+		fmt.Println("Ошибка при создании папки:", err)
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Println("Нажмите Enter для загрузки изображений (или введите 'exit' для выхода)...")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "exit" {
+			fmt.Println("Выход из программы.")
+			break
+		}
+
+		fmt.Println("Сканируем страницу и загружаем изображения...")
+
+		var cssStyles string
+		var inlineStyles []string
+
+		err := chromedp.Run(ctx,
+			chromedp.Evaluate(`Array.from(document.styleSheets).map(sheet => {
+				try { return Array.from(sheet.rules).map(rule => rule.cssText).join("\n"); }
+				catch(e) { return ''; }
+			}).join("\n");`, &cssStyles),
+			chromedp.Evaluate(`Array.from(document.querySelectorAll('*')).map(el => getComputedStyle(el).backgroundImage).filter(bg => bg && bg.startsWith("url"))`, &inlineStyles),
+		)
+		if err != nil {
+			fmt.Println("Ошибка при загрузке CSS:", err)
+			continue
+		}
+
+		imageURLs := extractImageURLs(cssStyles)
+		imageURLs = append(imageURLs, extractImageURLs(strings.Join(inlineStyles, "\n"))...)
+
+		if len(imageURLs) == 0 {
+			fmt.Println("Изображения не найдены.")
+			continue
+		}
+
+		fmt.Printf("Найдено %d изображений. Начинаем загрузку...\n", len(imageURLs))
+		downloadImages(imageURLs)
+		fmt.Println("Загрузка завершена.")
+	}
+}
+
+func extractImageURLs(css string) []string {
+	matches := imageURLRegex.FindAllStringSubmatch(css, -1)
+	var urls []string
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		url := strings.Trim(match[1], "'\"")
+
+		if strings.HasPrefix(url, "data:") {
+			continue
+		}
+
+		if strings.HasPrefix(url, "/") {
+			url = pageURL + url
+		}
+
+		urls = append(urls, url)
+	}
+
+	return urls
+}
+
+func downloadImages(urls []string) {
+	var wg sync.WaitGroup
+
+	validRegex := regexp.MustCompile(`^(?:\d+|[0-9a-f]{32})\.\w+$`)
+
+	for _, url := range urls {
+		fileName := filepath.Base(url)
+
+		if !validRegex.MatchString(fileName) {
+			fmt.Println("Пропущено:", fileName)
+			continue
+		}
+
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
+			downloadImage(url)
+		}(url)
+	}
+
+	wg.Wait()
+}
+
+// Функция для загрузки одного изображения
+func downloadImage(url string) {
+	fileName := filepath.Base(url)
+	filePath := filepath.Join(outputFolder, fileName)
+
+	if _, err := os.Stat(filePath); err == nil {
+		fmt.Println("Файл уже загружен:", filePath)
+		return
+	}
+
+	fmt.Println("Загружаем:", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Ошибка загрузки:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Ошибка:", resp.Status)
+		return
+	}
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		fmt.Println("Ошибка создания файла:", err)
+		return
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		fmt.Println("Ошибка записи файла:", err)
+	}
+}
+
+func incImage(inputFilepath string, outputFilePath string, text string) {
+	// Открываем файл
+	inputFile, err := os.Open(inputFilepath)
+	if err != nil {
+		log.Fatalf("Не удалось открыть файл: %v", err)
+	}
+	defer inputFile.Close()
+
+	// Декодируем изображение
+	srcImage, err := webp.Decode(inputFile)
+	if err != nil {
+		log.Fatalf("Не удалось декодировать WEBP: %v", err)
+	}
+
+	// Увеличиваем изображение в 1.5 раза
+	srcBounds := srcImage.Bounds()
+	newSrcWidth := int(float64(srcBounds.Dx()) * 1.5)
+	newSrcHeight := int(float64(srcBounds.Dy()) * 1.5)
+	resizedImage := imaging.Resize(srcImage, newSrcWidth, newSrcHeight, imaging.Lanczos)
+
+	// Размеры нового изображения с белым фоном
+	newWidth := 900
+	newHeight := 1200
+	newImage := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+	white := color.RGBA{255, 255, 255, 255}
+	draw.Draw(newImage, newImage.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
+
+	// Центрирование увеличенного изображения
+	offsetX := (newWidth - newSrcWidth) / 2
+	offsetY := (newHeight - newSrcHeight) / 2
+	draw.Draw(newImage, image.Rect(offsetX, offsetY, offsetX+newSrcWidth, offsetY+newSrcHeight), resizedImage, image.Point{}, draw.Over)
+
+	// Добавляем текст на изображение
+	addLabel(newImage, 50, newHeight-100, text) // Текст внизу изображения
+
+	// Сохранение в файл
+	outputFile, err := os.Create(outputFilePath)
+	if err != nil {
+		log.Fatalf("Не удалось создать файл для записи: %v", err)
+	}
+	defer outputFile.Close()
+
+	err = jpeg.Encode(outputFile, newImage, &jpeg.Options{Quality: 90})
+	if err != nil {
+		log.Fatalf("Не удалось сохранить изображение: %v", err)
+	}
+
+	log.Println("Изображение увеличено, текст добавлен и сохранено как", outputFilePath)
+}
+
+func addLabel(img *image.RGBA, x, y int, label string) {
+	col := color.Black // Цвет текста
+
+	// Загружаем встроенный шрифт Go Regular (поддерживает кириллицу)
+	ttfFont, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		log.Fatalf("Ошибка загрузки шрифта: %v", err)
+	}
+
+	// Настраиваем шрифт с размером 30
+	face, err := opentype.NewFace(ttfFont, &opentype.FaceOptions{
+		Size:    70, // Размер шрифта
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		log.Fatalf("Ошибка создания шрифтового лица: %v", err)
+	}
+
+	point := fixed.Point26_6{
+		X: fixed.I(x),
+		Y: fixed.I(y),
+	}
+
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(col),
+		Face: face,
+		Dot:  point,
+	}
+	d.DrawString(label)
+}

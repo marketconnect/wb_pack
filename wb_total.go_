@@ -1,0 +1,75 @@
+package main
+
+import (
+	"context"
+	"encoding/csv"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/chromedp/chromedp"
+)
+
+func main() {
+	fmt.Println("1")
+	keywords := []string{"Почтовые коробки", "Архивные коробки ", "Четырехклапанные", "Самосборные коробки", "Бело-бурые коробки", "Белые коробки", "Для переезда", "Пакеты полиэтиленовые", "Почтовые", "Курьерские", "БОПП пакеты", "Пузырчатые пакеты", "С бегунком слайдеры", "Пакеты с замком зип-лок", "Дой-пак", "С воздушной подушкой", "Пакеты Майка", "Пакеты фасовочные полиэтиленовые", "Самоклеящиеся конверты", "Пузырчатые пленки", "Двухслойная", "Трехслойная", "Клейкая лента", "Прозрачная", "Цветная", "С надписью", "Специальная", "Диспенсеры", "Гофрокартон", "Гофрокартон в листах", "Гофрокартон рулонный", "Бумага упаковочная", "Крафтовая бумага", "Бумага тишью", "Пищевая бумага", "Наполнители", "Крафт наполнитель ", "Цветной наполнитель", "Бумажный наполнитель на заказ", "Для упаковки подарков", "Атласная лента", "Шпагат", "Бумага Тишью", "Пленка для цветов", "Термоэтикетки", "Пленки", "Стрейч пленка рулонная", "БОПП пленка", "Канцелярия", "Канцелярский нож", "Шпагат", "Маркеры и ручки", "Кассовые ленты", "Файлы для бумаги", "Краска штемпельная", "Бумага для принтера", "Ножницы", "Дополнительно", "Хозяйственные товары", "Перчатки хозяйственные", "Маски одноразовые", "Прочее", "Разное", "Бейсболки", "Упаковка для маркетплейсов", "Самосборные коробки", "Пакеты с бегунком", "Зип-лок пакеты", "Четырехклапанные коробки", "БОПП пакеты", "Пузырчатые пакеты", "Пузырчатые пленки", "Стрейч пленка", "Клейкие ленты Скотч", "Наполнители"}
+	outputFile := "wildberries_results.csv"
+	fmt.Println("2")
+	// Создаем контекст Chrome
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+	fmt.Println("3")
+	// Открываем CSV файл
+	file, err := os.Create(outputFile)
+	if err != nil {
+		fmt.Println("Ошибка создания файла:", err)
+		return
+	}
+	defer file.Close()
+	fmt.Println("4")
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+	fmt.Println("5")
+	// Записываем заголовок CSV файла
+	writer.Write([]string{"keyword", "total"})
+
+	fmt.Println("6")
+	for _, keyword := range keywords {
+		fmt.Printf("Обрабатываем ключевое слово: %s\n", keyword)
+		total, err := getTotalForKeyword(ctx, keyword)
+		if err != nil {
+			fmt.Println("Ошибка получения total для:", keyword, err)
+			continue
+		}
+
+		fmt.Printf("%s: %d товаров найдено\n", keyword, total)
+		writer.Write([]string{keyword, fmt.Sprintf("%d", total)})
+		writer.Flush()
+
+		// Задержка между запросами
+		time.Sleep(5 * time.Second)
+	}
+	fmt.Println("7")
+}
+
+func getTotalForKeyword(ctx context.Context, keyword string) (int, error) {
+	var totalText string
+	url := "https://www.wildberries.ru/catalog/0/search.aspx?search=" + strings.ReplaceAll(keyword, " ", "%20")
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.WaitVisible(`span.searching-results__count`, chromedp.ByQuery),
+		chromedp.Text(`span.searching-results__count span`, &totalText, chromedp.ByQuery),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	// Убираем пробелы и преобразуем в число
+	totalText = strings.ReplaceAll(totalText, " ", "")
+	var total int
+	fmt.Sscanf(totalText, "%d", &total)
+
+	return total, nil
+}

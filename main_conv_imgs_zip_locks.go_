@@ -61,7 +61,7 @@ func main() {
 		imagePath := filepath.Join(imagesFolder, file.Name())
 
 		// Получаем данные из базы: name, transport_volume_m3, length_mm и width_mm
-		name, transportVolume, lengthMM, widthMM := getProductData(db, productID)
+		name, transportVolume, lengthMM, widthMM, heightMKM := getProductData(db, productID)
 		if name == "" {
 			log.Printf("Пропущен файл %s: товар не найден в базе\n", file.Name())
 			continue
@@ -85,25 +85,25 @@ func main() {
 		quantities := []string{"100"}
 		for _, qty := range quantities {
 			outputFile := filepath.Join(outputFolder, fmt.Sprintf("%s-%s.jpg", productID, qty))
-			text := fmt.Sprintf("%s — %s шт.", dimensions, qty)
-			incImage(imagePath, outputFile, text)
+			text := fmt.Sprintf("%s  %s мкм.", dimensions, heightMKM)
+			incImage(imagePath, outputFile, text, fmt.Sprintf("%s шт.", qty))
 		}
 	}
 }
 
 // getProductData получает name, transport_volume_m3, length_mm и width_mm для заданного productID
-func getProductData(db *sql.DB, productID string) (string, string, string, string) {
-	var name, transportVolume, lengthMM, widthMM string
-	err := db.QueryRow("SELECT name, transport_volume_m3, length_mm, width_mm FROM products WHERE product_id = ?", productID).
-		Scan(&name, &transportVolume, &lengthMM, &widthMM)
+func getProductData(db *sql.DB, productID string) (string, string, string, string, string) {
+	var name, transportVolume, lengthMM, widthMM, heightMKM string
+	err := db.QueryRow("SELECT name, transport_volume_m3, length_mm, width_mm, height_mkm FROM products WHERE product_id = ?", productID).
+		Scan(&name, &transportVolume, &lengthMM, &widthMM, &heightMKM)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", "", "", ""
+			return "", "", "", "", ""
 		}
 		log.Printf("Ошибка запроса к базе данных: %v", err)
-		return "", "", "", ""
+		return "", "", "", "", ""
 	}
-	return name, transportVolume, lengthMM, widthMM
+	return name, transportVolume, lengthMM, widthMM, heightMKM
 }
 
 // extractDimensions формирует строку габаритов в формате "length_mm x width_mm мм"
@@ -120,7 +120,7 @@ func extractDimensions(lengthMM, widthMM string) string {
 }
 
 // incImage обрабатывает изображение и добавляет на него текст
-func incImage(inputFilepath, outputFilePath, text string) {
+func incImage(inputFilepath, outputFilePath, text string, qty string) {
 	inputFile, err := os.Open(inputFilepath)
 	if err != nil {
 		log.Printf("Ошибка открытия файла %s: %v", inputFilepath, err)
@@ -149,6 +149,7 @@ func incImage(inputFilepath, outputFilePath, text string) {
 	draw.Draw(newImage, image.Rect(offsetX, offsetY, offsetX+newSrcWidth, offsetY+newSrcHeight), resizedImage, image.Point{}, draw.Over)
 
 	addLabel(newImage, 120, newHeight-100, text)
+	addLabel(newImage, 120, 100, qty)
 
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
