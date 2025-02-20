@@ -170,7 +170,7 @@ func checkOzonOrders() {
 		Filter: map[string]string{
 			"since":  yesterday.Format("2006-01-02T15:04:05Z"), // Вчера 23:00
 			"to":     now.Format("2006-01-02T15:04:05Z"),       // Сейчас
-			"status": "awaiting_approve",
+			"status": "awaiting_deliver",
 		},
 		Limit:  100,
 		Offset: 0,
@@ -229,6 +229,7 @@ func checkOzonOrders() {
 		fmt.Printf("Ошибка при разборе ответа: %v\n", err)
 		return
 	}
+
 	if len(res.Result.Postings) == 0 {
 		log.Println("✅ Новых заказов на OZON нет.")
 		return
